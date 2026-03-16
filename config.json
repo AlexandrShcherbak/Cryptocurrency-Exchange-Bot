@@ -1,0 +1,23 @@
+{
+    "admin_id": "82639",
+    "bot_token": "7579283651:AAECwk0v60iur7-fZ1iWJzC9S",
+    "markup_percentage": 500,
+    "min_trx_purchase": 0.002,
+    "rate_update_interval": 60000,
+    "crystalpay": {
+        "auth_login": "tt",
+        "auth_secret": "828dae661f6a78192d1",
+        "salt": "3f77171e915d3188"
+    },
+    "callback_url": "endway.su",
+    "cryptobot": {
+        "token": "442739:AAyV6RzYHVJKA4"
+    },
+    "database": {
+        "host": "ep-green-scene-a2gw03wx.eu-central-1.aws.neon.tech",
+        "port": 5432,
+        "user": "neondb_owner",
+        "password": "npg_01cxITlEzQiA",
+        "database": "neondb"
+    }
+}
