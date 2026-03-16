@@ -7,7 +7,7 @@ const { ensureTablesExist } = require('./server/db.js');
 const { handleStart } = require('./handlers/start.js');
 const { handleBalance, handleTopup, handleTopupWithAmount, handlePaymentMethod, handleTopupAmountInput, handleCheckPayment, handleMyDeposits, handleMyExchanges, handleDepositDetails, handleExchangeDetails } = require('./handlers/balance.js');
 const { handleBuy, handleAddressInput, handleAmountInput, handleConfirmPurchase } = require('./handlers/buy.js');
-const { handleCalculator, handleCalcCurrentRate, handleCalcCurrentRateRefresh, handleCalcPurchasePlan, handleCalcRubToTrx, handleCalcTrxToRub, handleRubAmountCalcInput, handleTrxAmountCalcInput, handleCalcPurchasePlanInput } = require('./handlers/calculator.js');
+const { handleCalculator, handleCalcCurrentRate, handleCalcCurrentRateRefresh, handleCalcRubToTrx, handleCalcTrxToRub, handleRubAmountCalcInput, handleTrxAmountCalcInput } = require('./handlers/calculator.js');
 const { handleAdmin, handleAddReserve, handleReserveAmountInput, handleGiveBalance, handleBroadcast, handleBroadcastMessageInput, handleUserIdForBalanceInput, handleBalanceAmountInput, handleConfirmBroadcast, handleDatabaseStatus } = require('./handlers/admin.js');
 const { handleReserve } = require('./handlers/reserve.js');
 
@@ -144,8 +144,6 @@ bot.on('callback_query', async (query) => {
             handleCalcCurrentRate(bot, chatId, message.message_id);
         } else if (data === 'calc_current_rate_refresh') {
             handleCalcCurrentRateRefresh(bot, chatId, message.message_id);
-        } else if (data === 'calc_purchase_plan') {
-            handleCalcPurchasePlan(bot, chatId, userId, userStates, message.message_id);
         } else if (data.startsWith('confirm_purchase_')) {
             const action = data.replace('confirm_purchase_', '');
             handleConfirmPurchase(bot, chatId, userId, action, userStates);
