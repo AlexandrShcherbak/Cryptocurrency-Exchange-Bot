@@ -1,5 +1,26 @@
-const { formatCurrency, formatTRX, validateAmount } = require('../utils/helpers');
-const config = require('../config.json');
+const { formatCurrency, formatTRX, validateAmount, parseNumericInput } = require('../utils/helpers');
+const ratesService = require('../services/rates');
+
+const sendOrEdit = async (bot, chatId, message, keyboard, messageId = null) => {
+    if (messageId) {
+        try {
+            await bot.editMessageText(message, {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: keyboard
+            });
+            return;
+        } catch (error) {
+            // fall back to send new message
+        }
+    }
+
+    await bot.sendMessage(chatId, message, {
+        parse_mode: 'Markdown',
+        reply_markup: keyboard
+    });
+};
 
 const handleCalculator = async (bot, chatId, userId, userStates, messageId = null) => {
     try {
@@ -8,7 +29,9 @@ const handleCalculator = async (bot, chatId, userId, userStates, messageId = nul
 Выберите режим калькулятора:
 
 🔹 Конвертировать Рубли → TRX
-🔹 Конвертировать TRX → Рубли`;
+🔹 Конвертировать TRX → Рубли
+🔹 Посмотреть текущий курс
+🔹 Рассчитать план покупки`;
 
         const keyboard = {
             inline_keyboard: [
@@ -19,33 +42,89 @@ const handleCalculator = async (bot, chatId, userId, userStates, messageId = nul
                     { text: '💎 TRX → Рубли', callback_data: 'calc_trx_to_rub' }
                 ],
                 [
+                    { text: '📊 Текущий курс', callback_data: 'calc_current_rate' }
+                ],
+                [
+                    { text: '🧾 План покупки', callback_data: 'calc_purchase_plan' }
+                ],
+                [
                     { text: '🔙 Назад в меню', callback_data: 'main_menu' }
                 ]
             ]
         };
 
-        if (messageId) {
-            try {
-                await bot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-            } catch (error) {
-                await bot.sendMessage(chatId, message, {
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-            }
-        } else {
-            await bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
-                reply_markup: keyboard
-            });
-        }
+        await sendOrEdit(bot, chatId, message, keyboard, messageId);
     } catch (error) {
         console.error('Calculator handler error:', error.message);
+        await bot.sendMessage(chatId, '❌ Произошла ошибка');
+    }
+};
+
+const handleCalcCurrentRate = async (bot, chatId, messageId = null) => {
+    try {
+        const rateDetails = await ratesService.getRateDetails();
+        const updatedAt = new Date(rateDetails.updatedAt).toLocaleString('ru-RU');
+
+        const message = `📊 *Текущий курс TRX*
+
+Курс продажи: ${formatCurrency(rateDetails.rate)}
+Рыночный курс: ${formatCurrency(rateDetails.baseRate)}
+Наценка: ${rateDetails.markupPercentage}%
+Источник TRX/USD: ${rateDetails.source.trxUsd}
+Источник USD/RUB: ${rateDetails.source.usdRub}
+Обновлено: ${updatedAt}`;
+
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '🔄 Обновить курс', callback_data: 'calc_current_rate_refresh' }
+                ],
+                [
+                    { text: '🔙 К калькулятору', callback_data: 'calculator' }
+                ]
+            ]
+        };
+
+        await sendOrEdit(bot, chatId, message, keyboard, messageId);
+    } catch (error) {
+        console.error('Calc current rate handler error:', error.message);
+        await bot.sendMessage(chatId, '❌ Не удалось получить текущий курс');
+    }
+};
+
+const handleCalcCurrentRateRefresh = async (bot, chatId, messageId = null) => {
+    try {
+        await ratesService.getTRXRateInRUB(true);
+        await handleCalcCurrentRate(bot, chatId, messageId);
+    } catch (error) {
+        console.error('Calc current rate refresh handler error:', error.message);
+        await bot.sendMessage(chatId, '❌ Не удалось обновить текущий курс');
+    }
+};
+
+const handleCalcPurchasePlan = async (bot, chatId, userId, userStates, messageId = null) => {
+    try {
+        userStates.set(userId, {
+            step: 'waiting_calc_plan_rub_amount',
+            messageId
+        });
+
+        const message = `🧾 *План покупки TRX*
+
+Введите бюджет в рублях, и я покажу:
+• сколько TRX вы получите
+• сколько вышло бы по рыночному курсу
+• влияние наценки в ₽ и TRX`;
+
+        const keyboard = {
+            inline_keyboard: [[
+                { text: '🔙 Назад', callback_data: 'calculator' }
+            ]]
+        };
+
+        await sendOrEdit(bot, chatId, message, keyboard, messageId);
+    } catch (error) {
+        console.error('Calc purchase plan handler error:', error.message);
         await bot.sendMessage(chatId, '❌ Произошла ошибка');
     }
 };
@@ -67,32 +146,7 @@ const handleCalcRubToTrx = async (bot, chatId, userId, userStates, messageId = n
             ]]
         };
 
-        if (messageId) {
-            try {
-                await bot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-            } catch (error) {
-                const sentMessage = await bot.sendMessage(chatId, message, {
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-                const userState = userStates.get(userId);
-                userState.messageId = sentMessage.message_id;
-                userStates.set(userId, userState);
-            }
-        } else {
-            const sentMessage = await bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
-                reply_markup: keyboard
-            });
-            const userState = userStates.get(userId);
-            userState.messageId = sentMessage.message_id;
-            userStates.set(userId, userState);
-        }
+        await sendOrEdit(bot, chatId, message, keyboard, messageId);
     } catch (error) {
         console.error('Calc rub to trx handler error:', error.message);
         await bot.sendMessage(chatId, '❌ Произошла ошибка');
@@ -116,32 +170,7 @@ const handleCalcTrxToRub = async (bot, chatId, userId, userStates, messageId = n
             ]]
         };
 
-        if (messageId) {
-            try {
-                await bot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-            } catch (error) {
-                const sentMessage = await bot.sendMessage(chatId, message, {
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-                const userState = userStates.get(userId);
-                userState.messageId = sentMessage.message_id;
-                userStates.set(userId, userState);
-            }
-        } else {
-            const sentMessage = await bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
-                reply_markup: keyboard
-            });
-            const userState = userStates.get(userId);
-            userState.messageId = sentMessage.message_id;
-            userStates.set(userId, userState);
-        }
+        await sendOrEdit(bot, chatId, message, keyboard, messageId);
     } catch (error) {
         console.error('Calc trx to rub handler error:', error.message);
         await bot.sendMessage(chatId, '❌ Произошла ошибка');
@@ -154,28 +183,29 @@ const handleRubAmountCalcInput = async (bot, chatId, userId, amountText, userSta
         if (!userState || userState.step !== 'waiting_rub_amount_calc') return;
 
         const amount = validateAmount(amountText, 1);
-        
+
         if (!amount) {
             await bot.sendMessage(chatId, '❌ Неверная сумма\nВведите корректную сумму в рублях:');
             return;
         }
 
-        // Get current TRX rate from global variable or config
-        const trxRate = global.currentTrxRate || 29.2; // Fallback rate
-        const markup = (100 + config.markup_percentage) / 100;
-        const trxAmount = (amount / (trxRate * markup)).toFixed(6);
+        const trxRate = await ratesService.getTRXRateInRUB();
+        const trxAmount = await ratesService.convertRubToTrx(amount);
 
         const message = `💰 *Результат конвертации*
 
 Сумма в рублях: ${formatCurrency(amount)}
 Курс TRX: ${formatCurrency(trxRate)}
-Итого TRX: ${formatTRX(parseFloat(trxAmount))}`;
+Итого TRX: ${formatTRX(trxAmount)}`;
 
         const keyboard = {
             inline_keyboard: [
                 [
                     { text: '🔄 Новый расчет', callback_data: 'calculator' },
                     { text: '💰 Купить TRX', callback_data: 'buy_trx' }
+                ],
+                [
+                    { text: '🧾 План покупки', callback_data: 'calc_purchase_plan' }
                 ],
                 [
                     { text: '🔙 Главное меню', callback_data: 'main_menu' }
@@ -189,7 +219,6 @@ const handleRubAmountCalcInput = async (bot, chatId, userId, amountText, userSta
         });
 
         userStates.delete(userId);
-
     } catch (error) {
         console.error('Rub amount calc input handler error:', error.message);
         await bot.sendMessage(chatId, '❌ Произошла ошибка при расчете');
@@ -201,17 +230,15 @@ const handleTrxAmountCalcInput = async (bot, chatId, userId, amountText, userSta
         const userState = userStates.get(userId);
         if (!userState || userState.step !== 'waiting_trx_amount_calc') return;
 
-        const trxAmount = parseFloat(amountText.replace(',', '.'));
-        
-        if (isNaN(trxAmount) || trxAmount <= 0) {
+        const trxAmount = parseNumericInput(amountText);
+
+        if (!trxAmount || trxAmount <= 0) {
             await bot.sendMessage(chatId, '❌ Неверное количество TRX\nВведите корректное количество:');
             return;
         }
 
-        // Get current TRX rate from global variable or config
-        const trxRate = global.currentTrxRate || 29.2; // Fallback rate
-        const markup = (100 + config.markup_percentage) / 100;
-        const rubAmount = trxAmount * trxRate * markup;
+        const trxRate = await ratesService.getTRXRateInRUB();
+        const rubAmount = await ratesService.convertTrxToRub(trxAmount);
 
         const message = `💎 *Результат конвертации*
 
@@ -237,17 +264,67 @@ const handleTrxAmountCalcInput = async (bot, chatId, userId, amountText, userSta
         });
 
         userStates.delete(userId);
-
     } catch (error) {
         console.error('Trx amount calc input handler error:', error.message);
         await bot.sendMessage(chatId, '❌ Произошла ошибка при расчете');
     }
 };
 
+const handleCalcPurchasePlanInput = async (bot, chatId, userId, amountText, userStates) => {
+    try {
+        const userState = userStates.get(userId);
+        if (!userState || userState.step !== 'waiting_calc_plan_rub_amount') return;
+
+        const amount = validateAmount(amountText, 1);
+        if (!amount) {
+            await bot.sendMessage(chatId, '❌ Неверная сумма\nВведите корректный бюджет в рублях:');
+            return;
+        }
+
+        const plan = await ratesService.estimatePurchasePlan(amount);
+
+        const message = `🧾 *План покупки TRX*
+
+Бюджет: ${formatCurrency(plan.rubAmount)}
+TRX к получению: ${formatTRX(plan.trxAmount)}
+TRX по рынку: ${formatTRX(plan.trxAtMarket)}
+Потеря из-за наценки: ${formatTRX(plan.lostTrxToMarkup)}
+Наценка в ₽: ${formatCurrency(plan.markupRub)}
+Курс продажи: ${formatCurrency(plan.sellRate)}
+Рыночный курс: ${formatCurrency(plan.baseRate)}`;
+
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '🔄 Новый план', callback_data: 'calc_purchase_plan' },
+                    { text: '💰 Купить TRX', callback_data: 'buy_trx' }
+                ],
+                [
+                    { text: '🔙 К калькулятору', callback_data: 'calculator' }
+                ]
+            ]
+        };
+
+        await bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: keyboard
+        });
+
+        userStates.delete(userId);
+    } catch (error) {
+        console.error('Calc purchase plan input handler error:', error.message);
+        await bot.sendMessage(chatId, '❌ Произошла ошибка при построении плана');
+    }
+};
+
 module.exports = {
     handleCalculator,
+    handleCalcCurrentRate,
+    handleCalcCurrentRateRefresh,
+    handleCalcPurchasePlan,
     handleCalcRubToTrx,
     handleCalcTrxToRub,
     handleRubAmountCalcInput,
-    handleTrxAmountCalcInput
+    handleTrxAmountCalcInput,
+    handleCalcPurchasePlanInput
 };
