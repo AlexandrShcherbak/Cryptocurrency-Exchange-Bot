@@ -28,26 +28,7 @@ const handleCalculator = async (bot, chatId, userId, userStates, messageId = nul
             ]
         };
 
-        if (messageId) {
-            try {
-                await bot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-            } catch (error) {
-                await bot.sendMessage(chatId, message, {
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-            }
-        } else {
-            await bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
-                reply_markup: keyboard
-            });
-        }
+        await sendOrEdit(bot, chatId, message, keyboard, messageId);
     } catch (error) {
         console.error('Calculator handler error:', error.message);
         await bot.sendMessage(chatId, '❌ Произошла ошибка');
@@ -130,32 +111,7 @@ const handleCalcRubToTrx = async (bot, chatId, userId, userStates, messageId = n
             ]]
         };
 
-        if (messageId) {
-            try {
-                await bot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-            } catch (error) {
-                const sentMessage = await bot.sendMessage(chatId, message, {
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-                const userState = userStates.get(userId);
-                userState.messageId = sentMessage.message_id;
-                userStates.set(userId, userState);
-            }
-        } else {
-            const sentMessage = await bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
-                reply_markup: keyboard
-            });
-            const userState = userStates.get(userId);
-            userState.messageId = sentMessage.message_id;
-            userStates.set(userId, userState);
-        }
+        await sendOrEdit(bot, chatId, message, keyboard, messageId);
     } catch (error) {
         console.error('Calc rub to trx handler error:', error.message);
         await bot.sendMessage(chatId, '❌ Произошла ошибка');
@@ -179,32 +135,7 @@ const handleCalcTrxToRub = async (bot, chatId, userId, userStates, messageId = n
             ]]
         };
 
-        if (messageId) {
-            try {
-                await bot.editMessageText(message, {
-                    chat_id: chatId,
-                    message_id: messageId,
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-            } catch (error) {
-                const sentMessage = await bot.sendMessage(chatId, message, {
-                    parse_mode: 'Markdown',
-                    reply_markup: keyboard
-                });
-                const userState = userStates.get(userId);
-                userState.messageId = sentMessage.message_id;
-                userStates.set(userId, userState);
-            }
-        } else {
-            const sentMessage = await bot.sendMessage(chatId, message, {
-                parse_mode: 'Markdown',
-                reply_markup: keyboard
-            });
-            const userState = userStates.get(userId);
-            userState.messageId = sentMessage.message_id;
-            userStates.set(userId, userState);
-        }
+        await sendOrEdit(bot, chatId, message, keyboard, messageId);
     } catch (error) {
         console.error('Calc trx to rub handler error:', error.message);
         await bot.sendMessage(chatId, '❌ Произошла ошибка');
@@ -237,6 +168,9 @@ const handleRubAmountCalcInput = async (bot, chatId, userId, amountText, userSta
                 [
                     { text: '🔄 Новый расчет', callback_data: 'calculator' },
                     { text: '💰 Купить TRX', callback_data: 'buy_trx' }
+                ],
+                [
+                    { text: '🧾 План покупки', callback_data: 'calc_purchase_plan' }
                 ],
                 [
                     { text: '🔙 Главное меню', callback_data: 'main_menu' }
@@ -298,6 +232,53 @@ const handleTrxAmountCalcInput = async (bot, chatId, userId, amountText, userSta
     } catch (error) {
         console.error('Trx amount calc input handler error:', error.message);
         await bot.sendMessage(chatId, '❌ Произошла ошибка при расчете');
+    }
+};
+
+const handleCalcPurchasePlanInput = async (bot, chatId, userId, amountText, userStates) => {
+    try {
+        const userState = userStates.get(userId);
+        if (!userState || userState.step !== 'waiting_calc_plan_rub_amount') return;
+
+        const amount = validateAmount(amountText, 1);
+        if (!amount) {
+            await bot.sendMessage(chatId, '❌ Неверная сумма\nВведите корректный бюджет в рублях:');
+            return;
+        }
+
+        const plan = await ratesService.estimatePurchasePlan(amount);
+
+        const message = `🧾 *План покупки TRX*
+
+Бюджет: ${formatCurrency(plan.rubAmount)}
+TRX к получению: ${formatTRX(plan.trxAmount)}
+TRX по рынку: ${formatTRX(plan.trxAtMarket)}
+Потеря из-за наценки: ${formatTRX(plan.lostTrxToMarkup)}
+Наценка в ₽: ${formatCurrency(plan.markupRub)}
+Курс продажи: ${formatCurrency(plan.sellRate)}
+Рыночный курс: ${formatCurrency(plan.baseRate)}`;
+
+        const keyboard = {
+            inline_keyboard: [
+                [
+                    { text: '🔄 Новый план', callback_data: 'calc_purchase_plan' },
+                    { text: '💰 Купить TRX', callback_data: 'buy_trx' }
+                ],
+                [
+                    { text: '🔙 К калькулятору', callback_data: 'calculator' }
+                ]
+            ]
+        };
+
+        await bot.sendMessage(chatId, message, {
+            parse_mode: 'Markdown',
+            reply_markup: keyboard
+        });
+
+        userStates.delete(userId);
+    } catch (error) {
+        console.error('Calc purchase plan input handler error:', error.message);
+        await bot.sendMessage(chatId, '❌ Произошла ошибка при построении плана');
     }
 };
 

@@ -233,6 +233,8 @@ bot.on('message', async (msg) => {
             handleRubAmountCalcInput(bot, chatId, userId, text, userStates);
         } else if (userState.step === 'waiting_trx_amount_calc') {
             handleTrxAmountCalcInput(bot, chatId, userId, text, userStates);
+        } else if (userState.step === 'waiting_calc_plan_rub_amount') {
+            handleCalcPurchasePlanInput(bot, chatId, userId, text, userStates);
         } else if (userState.step === 'waiting_reserve_amount') {
             handleReserveAmountInput(bot, chatId, userId, text, userStates);
         } else if (userState.step === 'waiting_broadcast_message') {

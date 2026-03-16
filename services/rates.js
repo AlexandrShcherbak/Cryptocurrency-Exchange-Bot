@@ -3,7 +3,8 @@ const config = require('../config.json');
 
 class RatesService {
     constructor() {
-        this.cachedRate = null;
+        this.cachedSellRate = null;
+        this.cachedBaseRate = null;
         this.lastUpdate = 0;
         this.updateInterval = config.rate_update_interval || 300000; // 5 minutes
         this.lastSource = null;
